@@ -80,9 +80,11 @@ impl Guest for ExampleFdw {
         // handle Google Sheets JSONP response format
         let body = if resp.body.starts_with("/*O_o*/") {
             // Extract JSON from JSONP: /*O_o*/ google.visualization.Query.setResponse({...});
+            // Find the opening brace of the JSON object
             let start_pos = resp.body.find('{').ok_or("invalid response: no JSON found")?;
-            let end_pos = resp.body.rfind("});").ok_or("invalid response: no JSON end found")?;
-            &resp.body[start_pos..end_pos + 1]
+            // Find the closing brace - look for the last '}' before the ");
+            let end_pos = resp.body.rfind('}').ok_or("invalid response: no JSON end found")?;
+            &resp.body[start_pos..=end_pos]
         } else {
             // fallback for other formats that might have )]}'\\n prefix
             resp.body.strip_prefix(")]}'\\n").unwrap_or(&resp.body)
