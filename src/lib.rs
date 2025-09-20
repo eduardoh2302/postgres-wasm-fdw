@@ -77,8 +77,16 @@ impl Guest for ExampleFdw {
         };
         let resp = http::get(&req)?;
 
-        // remove invalid prefix from response to make a valid JSON string
-        let body = resp.body.strip_prefix(")]}'\\n").ok_or("invalid response")?;
+        // handle Google Sheets JSONP response format
+        let body = if resp.body.starts_with("/*O_o*/") {
+            // Extract JSON from JSONP: /*O_o*/ google.visualization.Query.setResponse({...});
+            let start_pos = resp.body.find('{').ok_or("invalid response: no JSON found")?;
+            let end_pos = resp.body.rfind("});").ok_or("invalid response: no JSON end found")?;
+            &resp.body[start_pos..end_pos + 1]
+        } else {
+            // fallback for other formats that might have )]}'\\n prefix
+            resp.body.strip_prefix(")]}'\\n").unwrap_or(&resp.body)
+        };
         let resp_json: JsonValue = serde_json::from_str(body).map_err(|e| e.to_string())?;
 
         // extract source rows from response
