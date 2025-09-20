@@ -80,16 +80,41 @@ impl Guest for ExampleFdw {
         // handle Google Sheets JSONP response format
         let body = if resp.body.starts_with("/*O_o*/") {
             // Extract JSON from JSONP: /*O_o*/ google.visualization.Query.setResponse({...});
-            // Find the opening brace of the JSON object
-            let start_pos = resp.body.find('{').ok_or("invalid response: no JSON found")?;
-            // Find the closing brace - look for the last '}' before the ");
-            let end_pos = resp.body.rfind('}').ok_or("invalid response: no JSON end found")?;
-            &resp.body[start_pos..=end_pos]
+            // Look for the pattern "setResponse(" to find where JSON starts
+            let start_marker = "setResponse(";
+            let start_offset = resp.body.find(start_marker)
+                .ok_or("invalid response: setResponse( not found")?;
+            let json_start = start_offset + start_marker.len();
+
+            // Find the JSON object by looking for the first '{' after setResponse(
+            let start_pos = resp.body[json_start..].find('{')
+                .map(|pos| json_start + pos)
+                .ok_or("invalid response: no JSON object found after setResponse(")?;
+
+            // Find the end by looking for "}); at the end
+            let end_marker = "});";
+            let end_offset = resp.body.rfind(end_marker)
+                .ok_or("invalid response: ending }); not found")?;
+
+            let extracted = &resp.body[start_pos..end_offset];
+
+            // Add debugging info
+            utils::report_info(&format!("Extracted JSON length: {}", extracted.len()));
+            utils::report_info(&format!("JSON preview: {}...",
+                if extracted.len() > 100 { &extracted[..100] } else { extracted }));
+
+            extracted
         } else {
             // fallback for other formats that might have )]}'\\n prefix
             resp.body.strip_prefix(")]}'\\n").unwrap_or(&resp.body)
         };
-        let resp_json: JsonValue = serde_json::from_str(body).map_err(|e| e.to_string())?;
+
+        let resp_json: JsonValue = serde_json::from_str(body).map_err(|e| {
+            utils::report_info(&format!("JSON parsing error: {}", e));
+            utils::report_info(&format!("Failed to parse: {}",
+                if body.len() > 200 { &body[..200] } else { body }));
+            e.to_string()
+        })?;
 
         // extract source rows from response
         this.src_rows = resp_json

@@ -1,4 +1,4 @@
-package eduardoh2302:sheets-fdw@0.3.2;
+package eduardoh2302:sheets-fdw@0.3.3;
 
 world example {
     import supabase:wrappers/http@0.1.0;
